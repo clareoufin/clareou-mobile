@@ -53,7 +53,7 @@
   button, input, select, textarea { font: inherit; outline: none; }
 
   /* ── Screens ── */
-  .screen { display: none; padding: 0 0 24px; max-width: 480px; margin: 0 auto; }
+  .screen { display: none; padding: 0 0 24px; width: 100%; }
   .screen.active { display: block; animation: fadein .18s ease-out; }
   @keyframes fadein { from { opacity:.3; transform:translateY(6px); } to { opacity:1; transform:none; } }
 
@@ -62,6 +62,9 @@
     position: sticky; top: 0; z-index: 10;
     background: var(--navy);
     padding: 14px 20px;
+  }
+  .topbar-inner {
+    max-width: 520px; margin: 0 auto;
     display: flex; align-items: center; gap: 12px;
   }
   .topbar .logo {
@@ -79,6 +82,11 @@
     border-radius: 0 0 28px 28px;
     padding: 28px 24px 32px;
     position: relative; overflow: hidden;
+    width: 100%;
+  }
+  .hero-inner {
+    max-width: 520px;
+    margin: 0 auto;
   }
   .hero-card::before {
     content: '';
@@ -107,7 +115,7 @@
   .h-chip strong { display: block; font-size: 15px; color: #fff; font-weight: 700; }
 
   /* ── Content padding ── */
-  .content { padding: 20px 16px 0; display: flex; flex-direction: column; gap: 14px; }
+  .content { padding: 20px 16px 0; display: flex; flex-direction: column; gap: 14px; max-width: 520px; margin: 0 auto; width: 100%; }
 
   /* ── Cards ── */
   .card {
@@ -314,11 +322,7 @@
 </div>
 
 <div id="app" style="display:none">
-  <div class="topbar">
-    <div class="logo">$</div>
-    <strong>Clareou</strong>
-    <span id="topbarSub"></span>
-  </div>
+  <div class="topbar"><div class="topbar-inner"><div class="logo">$</div><strong>Clareou</strong><span id="topbarSub"></span></div></div>
 
   <section class="screen active" id="screen-resumo"></section>
   <section class="screen" id="screen-rapido"></section>
@@ -554,8 +558,33 @@
     const heroValue = of.hasBalance ? money(of.bankBalance) : money(m.operational);
     const heroEyebrow = of.hasBalance ? 'Saldo conectado \u00b7 '+monthLabel(month) : monthLabel(month);
     const heroLabel = of.hasBalance ? 'Atualizado via Open Finance' : 'Sobra confirmada do m\u00eas';
+
+    // Barra visual receitas vs despesas
+    const maxBar = Math.max(m.income, m.expenses, 1);
+    const incPct = Math.round((m.income / maxBar) * 100);
+    const expPct = Math.round((m.expenses / maxBar) * 100);
+
+    // Score de saúde simplificado (0–100)
+    function calcScore(){
+      if(!m.income && !m.expenses) return 0;
+      const target = Number(appState.settings.savingTargetAmount||0);
+      const expScore = m.income > 0 ? Math.max(0, Math.min(45, (1 - m.expenses/m.income)*45+20)) : 0;
+      const targetScore = target > 0 ? Math.max(0, Math.min(35, m.operational/target*35)) : m.operational>0?25:0;
+      const posScore = m.operational >= 0 ? 20 : Math.max(0, 20 + m.operational/Math.max(m.expenses,1)*20);
+      return Math.max(0, Math.min(100, Math.round(expScore+targetScore+posScore)));
+    }
+    const score = calcScore();
+    const scoreTone = score >= 75 ? 'ok' : score >= 50 ? 'warn' : 'bad';
+    const scoreColor = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--amber)' : 'var(--red)';
+
+    // Últimos 4 lançamentos do mês
+    const recent = (appState.transactions||[])
+      .filter(t=>byMonth(t.date, month))
+      .sort((a,b)=>b.date.localeCompare(a.date))
+      .slice(0, 4);
+
     el.innerHTML =
-      '<div class="hero-card">'+
+      '<div class="hero-card"><div class="hero-inner">'+
         '<div class="h-eyebrow">'+escapeHtml(heroEyebrow)+'</div>'+
         '<div class="h-value">'+heroValue+'</div>'+
         '<div class="h-label">'+escapeHtml(heroLabel)+'</div>'+
@@ -563,12 +592,43 @@
           '<div class="h-chip"><span>Sobra do m\u00eas</span><strong>'+money(m.operational)+'</strong></div>'+
           '<div class="h-chip"><span>Pend\u00eancias</span><strong>'+money(m.pending)+'</strong></div>'+
         '</div>'+
-      '</div>'+
+      '</div></div>'+
       '<div class="content">'+
+
+        // ── Saúde + fluxo ──
+        '<div class="card">'+
+          '<div class="card-head"><h3>Sa\u00fade do m\u00eas</h3>'+
+            '<div style="display:flex;align-items:center;gap:8px">'+
+              '<div style="font-size:22px;font-weight:800;color:'+scoreColor+'">'+score+'</div>'+
+              '<div style="font-size:11px;color:var(--sub);line-height:1.3">de 100<br><span class="pill '+scoreTone+'" style="margin-top:3px;display:inline-flex">'+
+                (scoreTone==='ok'?'OK':scoreTone==='warn'?'Aten\u00e7\u00e3o':'Cr\u00edtico')+'</span></div>'+
+            '</div>'+
+          '</div>'+
+          '<div style="display:flex;flex-direction:column;gap:10px">'+
+            '<div>'+
+              '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin-bottom:5px">'+
+                '<span>Entrou</span><strong style="color:var(--green)">'+money(m.income)+'</strong></div>'+
+              '<div style="height:8px;background:var(--line);border-radius:99px;overflow:hidden">'+
+                '<div style="height:100%;width:'+incPct+'%;background:var(--green);border-radius:99px;transition:width .4s ease"></div>'+
+              '</div>'+
+            '</div>'+
+            '<div>'+
+              '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--sub);margin-bottom:5px">'+
+                '<span>Saiu</span><strong style="color:var(--red)">'+money(m.expenses)+'</strong></div>'+
+              '<div style="height:8px;background:var(--line);border-radius:99px;overflow:hidden">'+
+                '<div style="height:100%;width:'+expPct+'%;background:var(--red);border-radius:99px;transition:width .4s ease"></div>'+
+              '</div>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+
+        // ── KPIs ──
         '<div class="kpi-row">'+
           '<div class="kpi-card '+(metaOk?'ok':'warn')+'"><span>Meta de sobra</span><strong>'+money(Number(appState.settings.savingTargetAmount||0))+'</strong></div>'+
           '<div class="kpi-card '+(m.pending>0?'warn':'ok')+'"><span>Em aberto</span><strong>'+money(m.pending)+'</strong></div>'+
         '</div>'+
+
+        // ── Alerta principal ──
         '<div class="card">'+
           '<div class="card-head"><h3>Onde olhar agora</h3><span class="pill '+top.kind+'">'+insightKindLabel(top.kind)+'</span></div>'+
           '<div class="insight '+top.kind+'">'+
@@ -576,8 +636,26 @@
             '<div class="i-text">'+escapeHtml(top.text)+'</div>'+
             '<div class="i-detail">'+escapeHtml(top.detail||'')+'</div>'+
           '</div>'+
-          (al.length>1?'<p class="hint" style="text-align:center">+'+(al.length-1)+' ponto(s) \u00b7 an\u00e1lise completa no computador</p>':'')+
+          (al.length>1?'<p class="hint" style="text-align:center;margin-top:10px">+'+(al.length-1)+' ponto(s) \u00b7 an\u00e1lise completa no computador</p>':'')+
         '</div>'+
+
+        // ── Últimos lançamentos ──
+        (recent.length?
+          '<div class="card">'+
+            '<div class="card-head"><h3>Recentes</h3><span style="font-size:11px;color:var(--sub)">'+monthLabel(month)+'</span></div>'+
+            '<div style="display:flex;flex-direction:column;gap:0">'+
+              recent.map((t,i)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;'+(i<recent.length-1?'border-bottom:1px solid var(--line)':'')+' gap:12px">'+
+                '<div style="min-width:0">'+
+                  '<div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escapeHtml(t.description||t.category)+'</div>'+
+                  '<div style="font-size:11px;color:var(--sub);margin-top:2px">'+escapeHtml(t.category)+' \u00b7 '+escapeHtml(t.date.slice(5))+'</div>'+
+                '</div>'+
+                '<div style="font-size:15px;font-weight:800;flex-shrink:0" class="'+(t.type==='Despesa'?'money-neg':'money-pos')+'">'+(t.type==='Despesa'?'-':'+')+money(t.amount)+'</div>'+
+              '</div>').join('')+
+            '</div>'+
+          '</div>'
+        : '')+
+
+        // ── Ações ──
         '<div class="btn-row">'+
           '<button class="btn primary" onclick="window.__clareouGo(\'rapido\')">Lan\u00e7ar r\u00e1pido</button>'+
           '<button class="btn ghost" onclick="window.__clareouGo(\'simulador\')">Simular</button>'+
@@ -591,10 +669,10 @@
     const el = document.getElementById('screen-rapido');
     const today = new Date().toISOString().slice(0,10);
     el.innerHTML =
-      '<div class="hero-card" style="border-radius:0 0 20px 20px;padding:20px 24px 24px">'+
+      '<div class="hero-card" style="border-radius:0 0 20px 20px;padding:20px 24px 24px"><div class="hero-inner">'+
         '<div class="h-eyebrow">Lan\u00e7amento r\u00e1pido</div>'+
         '<div class="h-value" style="font-size:28px">Novo registro</div>'+
-      '</div>'+
+      '</div></div>'+
       '<div class="content">'+
       '<div class="card">'+
       '<form id="quickForm" style="display:flex;flex-direction:column;gap:16px">'+
@@ -637,10 +715,10 @@
     const startingBalance = of.hasBalance ? of.bankBalance : 0;
     const buffer = appState ? Number(appState.settings.bufferTargetAmount||0) : 0;
     el.innerHTML =
-      '<div class="hero-card" style="border-radius:0 0 20px 20px;padding:20px 24px 24px">'+
+      '<div class="hero-card" style="border-radius:0 0 20px 20px;padding:20px 24px 24px"><div class="hero-inner">'+
         '<div class="h-eyebrow">Simulador de decis\u00e3o</div>'+
         '<div class="h-value" style="font-size:28px">Veja o impacto antes</div>'+
-      '</div>'+
+      '</div></div>'+
       '<div class="content">'+
       '<div class="card">'+
       '<form id="simForm" style="display:flex;flex-direction:column;gap:16px">'+
@@ -672,19 +750,43 @@
         startingBalance: Number(f.get('startingBalance')||0), buffer: Number(f.get('buffer')||0),
         scenario: { kind: f.get('kind'), description: String(f.get('description')||'').trim(), amount: Number(f.get('amount')||0), cashDate: f.get('cashDate'), installments: 1 }
       };
-      if(!input.scenario.description || input.scenario.amount<=0){ toast('Informe a decisão e o valor'); return; }
+      if(!input.scenario.description || input.scenario.amount<=0){ toast('Informe a decis\u00e3o e o valor'); return; }
       const baseline = runCashFlow(appState, input, null);
       const result = runCashFlow(appState, input, input.scenario);
       const tone = cashflowTone(result);
       const impact = result.minFree - baseline.minFree;
+      const impactPct = baseline.minFree !== 0 ? Math.abs(Math.round(impact/Math.abs(baseline.minFree)*100)) : 0;
       document.getElementById('simResultBox').innerHTML =
+        '<div class="content" style="padding-top:14px">'+
         '<div class="result-banner '+tone+'">'+
-          '<h4>'+(tone==='bad'?'\u26a0 Saldo ficaria negativo':tone==='warn'?'Conta respiro seria usada':'Respiro preservado \u2713')+'</h4>'+
-          '<p>Menor dinheiro livre em '+shortDate(result.minFreeDate)+'</p>'+
+          '<h4>'+(tone==='bad'?'\u26a0\ufe0f Saldo ficaria negativo':tone==='warn'?'\u26a0\ufe0f Conta respiro seria usada':'Respiro preservado \u2714\ufe0f')+'</h4>'+
+          '<p style="margin-top:4px">Ponto mais apertado em <strong>'+shortDate(result.minFreeDate)+'</strong></p>'+
           '<div class="compare-row">'+
-            '<div class="compare-box"><span>Sem a decis\u00e3o</span><strong>'+money(baseline.minFree)+'</strong></div>'+
-            '<div class="compare-box"><span>Com a decis\u00e3o</span><strong class="'+(impact<0?'money-neg':'money-pos')+'">'+money(result.minFree)+'</strong></div>'+
+            '<div class="compare-box">'+
+              '<span>Sem a decis\u00e3o</span>'+
+              '<strong>'+money(baseline.minFree)+'</strong>'+
+              '<div style="font-size:11px;color:var(--sub);margin-top:3px">dinheiro livre</div>'+
+            '</div>'+
+            '<div class="compare-box">'+
+              '<span>Com a decis\u00e3o</span>'+
+              '<strong class="'+(impact<0?'money-neg':'money-pos')+'">'+money(result.minFree)+'</strong>'+
+              '<div style="font-size:11px;color:var(--sub);margin-top:3px">'+(impact<0?'\u2193':'\u2191')+' '+(impactPct>0?impactPct+'% ':'')+(impact<0?'menos livre':'mais livre')+'</div>'+
+            '</div>'+
           '</div>'+
+        '</div>'+
+        '<div class="card">'+
+          '<div class="card-head"><h3>O que isso significa</h3></div>'+
+          '<p style="font-size:14px;color:var(--sub);line-height:1.6">'+
+            (tone==='bad'
+              ? 'Com essa sa\u00edda, o saldo ficaria negativo. O app est\u00e1 mostrando o impacto &mdash; a decis\u00e3o fica com voc\u00eacs.'
+              : tone==='warn'
+              ? 'O saldo continua positivo, mas precisaria usar parte da conta respiro. Vale conversar antes de decidir.'
+              : 'Mesmo com essa decis\u00e3o, a conta respiro fica coberta durante todo o per\u00edodo simulado.')+
+          '</p>'+
+          '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--sub)">'+
+            'Saldo final projetado: <strong style="color:var(--ink)">'+money(result.finalBalance)+'</strong> em '+shortDate(result.endDate)+
+          '</div>'+
+        '</div>'+
         '</div>';
     };
   }
